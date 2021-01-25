@@ -21,6 +21,8 @@ func Init() *echo.Echo {
 	app.GET("/api/v1/users", controllers.GetAllUsers)
 	app.POST("/api/v1/users", controllers.StoreNewUser)
 	app.GET("/api/v1/users/:id", controllers.GetUserByID)
+	app.PATCH("/api/v1/users", controllers.UpdateUserInfo)
+	app.DELETE("/api/v1/users/:id", controllers.DeleteUser)
 
 	return app
 

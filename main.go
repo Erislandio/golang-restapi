@@ -7,6 +7,7 @@ import (
 
 func main() {
 	database.Init()
+	database.InitRedis()
 	routes := routes.Init()
 
 	routes.Logger.Fatal(routes.Start(":8080"))

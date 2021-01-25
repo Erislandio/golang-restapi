@@ -1,6 +1,8 @@
 package models
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -15,6 +17,10 @@ type User struct {
 	Phone string `json:"phone"`
 }
 
+var (
+	ctx = context.Background()
+)
+
 // FetchAllUsers for users list
 func FetchAllUsers() (Response, error) {
 
@@ -24,9 +30,14 @@ func FetchAllUsers() (Response, error) {
 
 	conn := database.CreateMysqlConn()
 
-	sqlStatement := "SELECT * FROM `users`"
+	users = getOnRedis("users")
 
-	rows, err := conn.Query(sqlStatement)
+	if len(users) > 0 {
+		setResponseSuccess(&response, "Success from redis", len(users), http.StatusOK, users)
+		return response, nil
+	}
+
+	rows, err := conn.Query(getAll)
 
 	defer rows.Close()
 
@@ -49,7 +60,40 @@ func FetchAllUsers() (Response, error) {
 	response.Data = users
 	response.Count = len(users)
 
+	saveOnRedis("users", users)
 	return response, nil
+}
+
+func marshalBinary(data interface{}) ([]byte, error) {
+	return json.Marshal(data)
+}
+
+func getOnRedis(key string) []User {
+	var users []User
+	redis := database.CreateRedisConn()
+
+	usersFromRedis, err := redis.Get("users").Result()
+
+	if err != nil {
+		fmt.Print(err.Error())
+	}
+
+	json.Unmarshal([]byte(usersFromRedis), &users)
+
+	return users
+}
+
+func saveOnRedis(key string, data interface{}) {
+	redis := database.CreateRedisConn()
+
+	toRedisData, _ := marshalBinary(data)
+
+	_, err := redis.Set("users", toRedisData, 0).Result()
+
+	if err != nil {
+		fmt.Print(err.Error())
+	}
+
 }
 
 // FindByEmail ;
@@ -60,9 +104,7 @@ func FindByEmail(email string) (Response, error) {
 
 	conn := database.CreateMysqlConn()
 
-	sqlStatment := "SELECT * FROM users WHERE email = ?"
-
-	rows, err := conn.Query(sqlStatment, email)
+	rows, err := conn.Query(getByEmail, email)
 
 	defer rows.Close()
 
@@ -116,9 +158,7 @@ func StoreUser(name, email, phone string) (Response, error) {
 		return response, nil
 	}
 
-	sqlStatement := "INSERT users (name, email, phone) VALUES (?, ?, ?)"
-
-	stmt, err := conn.Prepare(sqlStatement)
+	stmt, err := conn.Prepare(insertIntoUsers)
 
 	defer stmt.Close()
 
@@ -145,6 +185,9 @@ func StoreUser(name, email, phone string) (Response, error) {
 	}
 	response.Count = int(lastInsertId)
 
+	newUsers, _ := FetchAllUsers()
+	saveOnRedis("users", newUsers.Data)
+
 	return response, nil
 
 }
@@ -164,9 +207,7 @@ func GetUserByID(id string) (Response, error) {
 
 	conn := database.CreateMysqlConn()
 
-	const sqlStatement = "SELECT * FROM users WHERE id = ?"
-
-	rows, err := conn.Query(sqlStatement, id)
+	rows, err := conn.Query(getByid, id)
 
 	if err != nil {
 		setResponse(&response, err.Error(), http.StatusInternalServerError, nil)
@@ -199,6 +240,89 @@ func GetUserByID(id string) (Response, error) {
 	}
 
 	return response, nil
+}
+
+// UpdateById func data
+func UpdateById(name, phone, id string) (Response, error) {
+
+	var response Response
+
+	conn := database.CreateMysqlConn()
+
+	updateStatement, err := conn.Prepare(updateByID)
+
+	if err != nil {
+		setResponse(&response, err.Error(), http.StatusInternalServerError, nil)
+		return response, err
+	}
+
+	result, err := updateStatement.Exec(name, phone, id)
+
+	if err != nil {
+		setResponse(&response, err.Error(), http.StatusInternalServerError, nil)
+		return response, err
+	}
+
+	final, err := result.RowsAffected()
+
+	if err != nil {
+		setResponse(&response, err.Error(), http.StatusInternalServerError, nil)
+		return response, err
+	}
+
+	if final > 0 {
+		setResponseSuccess(&response, "Success", int(final), http.StatusOK, final)
+	} else {
+		message := fmt.Sprintf("User with id: %s not found!", id)
+		setResponse(&response, message, http.StatusBadRequest, nil)
+	}
+
+	newUsers, _ := FetchAllUsers()
+	saveOnRedis("users", newUsers.Data)
+
+	return response, nil
+
+}
+
+// DeleteByID .
+func DeleteByID(id string) (Response, error) {
+	var response Response
+
+	conn := database.CreateMysqlConn()
+
+	deleteStatement, err := conn.Prepare(deleteUser)
+
+	if err != nil {
+		setResponse(&response, err.Error(), http.StatusInternalServerError, nil)
+		return response, err
+	}
+
+	result, err := deleteStatement.Exec(id)
+
+	if err != nil {
+		setResponse(&response, err.Error(), http.StatusInternalServerError, nil)
+		return response, err
+	}
+
+	final, err := result.RowsAffected()
+
+	if err != nil {
+		setResponse(&response, err.Error(), http.StatusInternalServerError, nil)
+		return response, err
+	}
+
+	if final > 0 {
+		setResponseSuccess(&response, "Success", int(final), http.StatusOK, final)
+	} else {
+		message := fmt.Sprintf("User with id: %s not found!", id)
+		setResponse(&response, message, http.StatusBadRequest, nil)
+	}
+
+	newUsers, _ := FetchAllUsers()
+	saveOnRedis("users", newUsers.Data)
+
+	return response, nil
+
 }
 
 func setResponse(response *Response, message string, status int, data interface{}) {
