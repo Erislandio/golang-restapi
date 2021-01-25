@@ -19,17 +19,25 @@ func GetAllUsers(e echo.Context) error {
 	result, err := models.FetchAllUsers()
 
 	if err != nil {
-		return statusInternalServerError(e, err)
+		return setResponse(e, err, result.Status)
 	}
 
-	return e.JSON(http.StatusInternalServerError, result)
+	return e.JSON(http.StatusOK, result)
 
 }
 
-func statusInternalServerError(e echo.Context, err error) error {
-	return e.JSON(http.StatusInternalServerError, models.Response{
-		Status:  500,
+func setResponse(e echo.Context, err error, status int) error {
+	return e.JSON(status, models.Response{
+		Status:  status,
 		Message: err.Error(),
+		Data:    nil,
+	})
+}
+
+func setResponseBad(e echo.Context, message string, status int) error {
+	return e.JSON(status, models.Response{
+		Status:  status,
+		Message: message,
 		Data:    nil,
 	})
 }
@@ -40,13 +48,31 @@ func StoreNewUser(e echo.Context) error {
 	body := new(UserDTO)
 
 	if err := e.Bind(body); err != nil {
-		return err
+		return setResponse(e, err, http.StatusInternalServerError)
 	}
 
 	result, err := models.StoreUser(body.Name, body.Email, body.Phone)
 
 	if err != nil {
-		return statusInternalServerError(e, err)
+		return setResponse(e, err, result.Status)
+	}
+
+	return e.JSON(http.StatusOK, result)
+}
+
+// GetUserByID ;
+func GetUserByID(e echo.Context) error {
+
+	idString := e.Param("id")
+
+	result, err := models.GetUserByID(idString)
+
+	if err != nil {
+		return setResponse(e, err, result.Status)
+	}
+
+	if result.Status != 200 {
+		return setResponseBad(e, result.Message, result.Status)
 	}
 
 	return e.JSON(http.StatusOK, result)

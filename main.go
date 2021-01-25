@@ -10,5 +10,4 @@ func main() {
 	routes := routes.Init()
 
 	routes.Logger.Fatal(routes.Start(":8080"))
-
 }

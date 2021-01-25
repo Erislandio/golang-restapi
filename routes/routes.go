@@ -20,6 +20,7 @@ func Init() *echo.Echo {
 
 	app.GET("/api/v1/users", controllers.GetAllUsers)
 	app.POST("/api/v1/users", controllers.StoreNewUser)
+	app.GET("/api/v1/users/:id", controllers.GetUserByID)
 
 	return app
 
